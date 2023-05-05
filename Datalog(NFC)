@@ -1,0 +1,135 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <SPI.h>
+#include <MFRC522.h>
+#include "DHT.h"
+#include <DS1302.h>
+
+// Inicializa la pantalla OLED
+#define SCREEN_WIDTH 128 // ancho de la pantalla OLED en píxeles
+#define SCREEN_HEIGHT 64 // altura de la pantalla OLED en píxeles
+#define OLED_RESET 4 // Pin de reset (no utilizado)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+#define SS_PIN 10
+#define RST_PIN 9
+MFRC522 mfrc522(SS_PIN, RST_PIN);
+
+#define DHTPIN 8
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+DS1302 rtc(2, 3, 4);
+
+float temp;
+float hum;
+int tempVariation = 1;
+int humVariation = 2;
+float lastTemp;
+float lastHum;
+
+String validTags[] = {"739fa531", "TAG_VALIDO_2", "TAG_VALIDO_3"};
+
+bool isValidTag(String tag) {
+  for (int i = 0; i < sizeof(validTags)/sizeof(validTags[0]); i++) {
+    if (tag == validTags[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void setup() {
+  Serial.begin(9600);
+  SPI.begin();
+  mfrc522.PCD_Init();
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+  dht.begin();
+}
+
+void loop() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  
+  temp = dht.readTemperature();
+  hum = dht.readHumidity();
+  
+  Time t = rtc.getTime();
+  
+  if (abs(temp - lastTemp) >= tempVariation || abs(hum - lastHum) >= humVariation) {
+    Serial.print(t.year); Serial.print("/");
+    Serial.print(t.mon); Serial.print("/");
+    Serial.print(t.date); Serial.print(" ");
+    Serial.print(t.hour); Serial.print(":");
+    Serial.print(t.min); Serial.print(":");
+    Serial.println(t.sec);
+    
+    Serial.print("Temperatura: ");
+    Serial.println(temp);
+    
+    Serial.print("Humedad: ");
+    Serial.println(hum);
+    
+    lastTemp = temp;
+    lastHum = hum;
+  }
+  
+  display.clearDisplay();
+  display.setCursor(0,0);
+  
+  display.print("Fecha: ");
+  display.print(t.date); display.print("/");
+  display.print(t.mon); display.print("/");
+  display.println(t.year);
+  
+  display.print("Hora: ");
+  display.print(t.hour); display.print(":");
+  display.println(t.min);
+  
+  display.print("Temperatura: ");
+  display.println(temp);
+  
+  display.print("Humedad: ");
+  display.println(hum);
+  
+  if ( ! mfrc522.PICC_IsNewCardPresent()) {
+    display.println();
+    display.println();
+    display.println();
+    display.println("Esperando Tag NFC");
+    display.display();
+    delay(1000);
+    return;
+  }
+
+  if ( ! mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
+
+    String content= "";
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+     content.concat(String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : ""));
+     content.concat(String(mfrc522.uid.uidByte[i], HEX));
+  }
+  
+  if (isValidTag(content)) {
+    display.println();
+    display.println();
+    display.println();
+    display.println("Tag NFC Valido");
+    display.display();
+    delay(3000);
+    
+  } else {
+    display.println();
+    display.println();
+    display.println();
+    display.println("Tag NFC Invalido");
+    display.display();
+    delay(3000);
+  }
+}
